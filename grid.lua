@@ -28,11 +28,21 @@ local GRID_METHODS = {
 	end,
 	list = function (g, f)
 		local result = { }
-		for x = 1, g.nx do
-			for y = 1, g.ny do
-				local value = f(g[x][y], x, y)
-				if value then
-					table.insert(result, { value = value, x = x, y = y })
+		if type(f) == "string" then
+			for x = 1, g.nx do
+				for y = 1, g.ny do
+					if g[x][y] == f then
+						table.insert(result, { value = f, x = x, y = y })
+					end
+				end
+			end
+		elseif type(f) == "function" then
+			for x = 1, g.nx do
+				for y = 1, g.ny do
+					local value = f(g[x][y], x, y)
+					if value ~= nil then
+						table.insert(result, { value = value, x = x, y = y })
+					end
 				end
 			end
 		end
@@ -138,15 +148,39 @@ local GRID_METHODS = {
 			end
 		end
 	end,
+	dump = function (g, x, y, value)
+		local save
+		if x and y then
+			save, g[x][y] = g[x][y], value
+		end
+		local sx = math.floor(math.log(g.ny) / math.log(10)) + 1
+		local buffer = { string.rep(" ", sx + 2) }
+		for i = 1, g.nx, 10 do
+			local str = tostring(i)
+			table.insert(buffer, str)
+			table.insert(buffer, string.rep(" ", 10 - string.len(str)))
+		end
+		print(table.concat(buffer))
+		for y = 1, g.ny do
+			buffer = { string.format(string.format("%%%dd  ", sx), y) }
+			for x = 1, g.nx do
+				table.insert(buffer, g[x][y])
+			end
+			print(table.concat(buffer))
+		end
+		if x and y then
+			g[x][y] = save
+		end
+	end,
 }
 GRID_METATABLE = {
 	__index = GRID_METHODS,
 }
 
--- Creates a grid
+-- Creates a grid from an input
 function create (input, map)
 	local gy = { }
-	for line in string.gmatch(input, "[^\n\r]+") do
+	for line in string.gmatch(input, "[^\n]+") do
 		local x = { }
 		for char in string.gmatch(line, ".") do
 			table.insert(x, map and map(char) or char)
@@ -169,6 +203,34 @@ function create (input, map)
 		table.insert(gx, gxy)
 	end
 	return setmetatable(gx, GRID_METATABLE)
+end
+
+-- Creates a full grid
+function full (nx, ny, f)
+	local g = {
+		nx = nx,
+		ny = ny,
+		marks = { },
+		stacks = { }
+	}
+	if type(f) == "string" then
+		for _ = 1, nx do
+			local gy = { }
+			for y = 1, ny do
+				gy[y] = f
+			end
+			table.insert(g, gy)
+		end
+	elseif type(f) == "function" then
+		for x = 1, nx do
+			local gy = { }
+			for y = 1, ny do
+				gy[y] = f(x, y)
+			end
+			table.insert(g, gy)
+		end
+	end
+	return setmetatable(g, GRID_METATABLE)
 end
 
 -- Return module
