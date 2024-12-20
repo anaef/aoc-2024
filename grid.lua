@@ -15,7 +15,7 @@ local GRID_METHODS = {
 			nx = g.nx,
 			ny = g.ny,
 			marks = { },
-			stacks = { },
+			edges = { },
 		}, GRID_METATABLE)
 		for x = 1, g.nx do
 			local gmy = { }
@@ -48,14 +48,17 @@ local GRID_METHODS = {
 		end
 		return result
 	end,
+	pos = function (g, x, y)
+		return (y - 1) * g.nx + (x - 1)
+	end,
 	mark = function (g, key, x, y, value)
 		local marks = g.marks[key]
 		if not marks then
 			marks = { }
 			g.marks[key] = marks
 		end
-		local pos = (y - 1) * g.nx + x
-		if value then
+		local pos = g:pos(x, y)
+		if value ~= nil then
 			marks[pos] = value
 		end
 		return marks[pos]
@@ -63,27 +66,8 @@ local GRID_METHODS = {
 	inc = function (g, key, x, y, inc)
 		return g:mark(key, x, y, (g:mark(key, x, y) or 0) + inc)
 	end,
-	push = function (g, key)
-		local stack = g.stacks[key]
-		if not stack then
-			stack = { }
-			g.stacks[key] = stack
-		end
-		local copy = { }
-		local marks = g.marks[key]
-		if marks then
-			for pos, value in pairs(marks) do
-				copy[pos] = value
-			end
-		end
-		table.insert(stack, copy)
-	end,
-	pop = function (g, key)
-		g.marks[key] = table.remove(g.stacks[key])
-	end,
 	reset = function (g, key)
 		g.marks[key] = nil
-		g.stacks[key] = nil
 	end,
 	count = function (g, f)
 		local count = 0
@@ -124,29 +108,42 @@ local GRID_METHODS = {
 		return sum
 	end,
 	step = function (g, x, y, ctx, f)
-		local prev = {
-			value = g[x][y],
-			x = x,
-			y = y
+		local stepctx = {
+			dirs = ctx.dirs,
+			prev = {
+				value = g[x][y],
+				x = x,
+				y = y
+			},
 		}
 		for _, dir in ipairs(ctx.dirs) do
 			local sx, sy = x + dir.x, y + dir.y
 			if sx >= 1 and sx <= g.nx and sy >= 1 and sy <= g.ny then
-				local sctx = {
-					value = g[sx][sy],
-					x = sx,
-					y = sy,
-					prev = prev,
-					dir = dir
-				}
-				for key, value in pairs(ctx) do
-					if sctx[key] == nil then
-						sctx[key] = value
-					end
-				end
-				f(sctx)
+				stepctx.value = g[sx][sy]
+				stepctx.x = sx
+				stepctx.y = sy
+				stepctx.dir = dir
+				f(stepctx)
 			end
 		end
+	end,
+	edge = function (g, mode, x1, y1, x2, y2, value)
+		local pos1 = g:pos(x1, y1)
+		local pos2 = g:pos(x2, y2)
+		if mode == "u" and pos1 > pos2 then
+			pos1, pos2 = pos2, pos1
+		end
+		local pos = pos1 * (g.nx * g.ny) + pos2
+		if value ~= nil then
+			g.edges[pos] = value
+		end
+		return g.edges[pos]
+	end,
+	dedge = function (g, x1, y1, x2, y2, value)
+		return g:edge("d", x1, y1, x2, y2, value)
+	end,
+	uedge = function (g, x1, y1, x2, y2, value)
+		return g:edge("u", x1, y1, x2, y2, value)
 	end,
 	dump = function (g, x, y, value)
 		local save
@@ -155,10 +152,10 @@ local GRID_METHODS = {
 		end
 		local sx = math.floor(math.log(g.ny) / math.log(10)) + 1
 		local buffer = { string.rep(" ", sx + 2) }
-		for i = 1, g.nx, 10 do
+		for i = 1, g.nx, 5 do
 			local str = tostring(i)
 			table.insert(buffer, str)
-			table.insert(buffer, string.rep(" ", 10 - string.len(str)))
+			table.insert(buffer, string.rep(" ", 5 - string.len(str)))
 		end
 		print(table.concat(buffer))
 		for y = 1, g.ny do
@@ -193,7 +190,7 @@ function create (input, map)
 		nx = nx,
 		ny = ny,
 		marks = { },
-		stacks = { }
+		edges = { },
 	}
 	for x = 1, nx do
 		local gxy = { }
@@ -211,7 +208,7 @@ function full (nx, ny, f)
 		nx = nx,
 		ny = ny,
 		marks = { },
-		stacks = { }
+		edges = { },
 	}
 	if type(f) == "string" then
 		for _ = 1, nx do
